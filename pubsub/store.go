@@ -1,0 +1,240 @@
+// Copyright 2022 Ed Huang<i@huangdx.net>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package pubsub
+
+import (
+	"database/sql"
+	"fmt"
+	"time"
+
+	_ "github.com/go-sql-driver/mysql"
+)
+
+// Store is the interface for the storage of the messages
+type Store interface {
+	// Init initializes the store, call it after creating the store
+	Init() error
+	// CreateStream creates a stream
+	CreateStream(streamName string) error
+	// PutMessages puts messages into a stream
+	PutMessages(streamName string, messages []*Message) error
+	// FetchMessages fetches messages from a stream
+	FetchMessages(streamName string, offset Offset, limit int) ([]Message, Offset, error)
+	// MinMaxID returns the min, max offset of a stream
+	MinMaxID(streamName string) (int64, int64, error)
+	// GetStreamNames returns the names of all streams
+	GetStreamNames() ([]string, error)
+	// DB returns the underlying database
+	DB() *sql.DB
+}
+
+func OpenStore(cfg *Config) (Store, error) {
+	s := &TiDBStore{
+		cfg: cfg,
+	}
+	if err := s.Init(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func OpenStoreWithDB(db *sql.DB, cfg *Config) (Store, error) {
+	s := &TiDBStore{
+		db:  db,
+		cfg: cfg,
+	}
+	if err := s.Init(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+type TiDBStore struct {
+	cfg *Config
+	db  *sql.DB
+}
+
+func (s *TiDBStore) GetStreamNames() ([]string, error) {
+	var names []string
+	rows, err := s.db.Query(fmt.Sprintf("SELECT stream_name FROM %s"), s.cfg.getMetaTblName())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		err := rows.Scan(&name)
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+// CreateStream creates a stream, every stream is a table in the database
+func (s *TiDBStore) CreateStream(streamName string) error {
+	// stream is a table in the database
+	stmt := fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s (
+			id BIGINT AUTO_INCREMENT,
+			ts BIGINT,
+			create_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			data TEXT,
+			PRIMARY KEY (id),
+			KEY(ts)
+		);`, s.cfg.getStreamTblName(streamName))
+	_, err := s.db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	// insert the stream name into the meta table
+	stmt = fmt.Sprintf(`
+		REPLACE INTO %s (stream_name)
+		VALUES ('%s');`, s.cfg.getMetaTblName(), streamName)
+	_, err = s.db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *TiDBStore) Init() error {
+	var err error
+	s.db, err = sql.Open("mysql", s.cfg.DSN)
+	if err != nil {
+		return err
+	}
+
+	// default connection timeout setting
+	// application could customize it
+	// by using the value return of DB()
+	s.db.SetConnMaxLifetime(time.Minute * 3)
+	s.db.SetMaxOpenConns(50)
+	s.db.SetMaxIdleConns(50)
+
+	// create stream meta table for all the streams
+	stmt := fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s (
+			stream_name VARCHAR(255) NOT NULL UNIQUE KEY
+		);`, s.cfg.getMetaTblName())
+	_, err = s.db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *TiDBStore) PutMessages(streamName string, messages []*Message) error {
+	// a message is a row in the table, so we need to use a transaction
+	// because auto_increment is used, we don't need to set id
+	// use id as the offset
+	txn, err := s.db.Begin()
+	defer txn.Rollback()
+	if err != nil {
+		return err
+	}
+	for _, msg := range messages {
+		sql := fmt.Sprintf(`
+		INSERT INTO %s (
+			ts,
+			data
+		) VALUES (
+			?,
+			?
+		)`, s.cfg.getStreamTblName(streamName))
+		res, err := txn.Exec(sql, msg.Ts, msg.Data)
+		if err != nil {
+			return err
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			return err
+		}
+		msg.ID = id
+	}
+	err = txn.Commit()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *TiDBStore) FetchMessages(streamName string, idOffset Offset, limit int) ([]Message, Offset, error) {
+	if idOffset == LatestId {
+		_, maxOffset, err := s.MinMaxID(streamName)
+		if err != nil {
+			return nil, 0, err
+		}
+		idOffset = Offset(maxOffset)
+	}
+	stmt := fmt.Sprintf(`
+		SELECT
+			id,
+			ts,
+			data
+		FROM %s
+		WHERE id > ?
+		LIMIT %d`, s.cfg.getStreamTblName(streamName), limit)
+
+	rows, err := s.db.Query(stmt, idOffset)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, 0, nil
+		}
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var messages []Message
+	var maxId int64 = 0
+	for rows.Next() {
+		var id int64
+		var ts int64
+		var data string
+		err := rows.Scan(&id, &ts, &data)
+		if err != nil {
+			return nil, 0, err
+		}
+		messages = append(messages, Message{
+			ID:   id,
+			Ts:   ts,
+			Data: data,
+		})
+		if id > maxId {
+			maxId = id
+		}
+	}
+	return messages, Offset(maxId), nil
+}
+
+func (s *TiDBStore) MinMaxID(streamName string) (int64, int64, error) {
+	// using isnull make sure when there is no message in the stream, not return NULL
+	stmt := fmt.Sprintf(`
+		SELECT
+			IFNULL(MIN(id), 0),
+			IFNULL(MAX(id), 0)
+		FROM %s`, s.cfg.getStreamTblName(streamName))
+	var minId, maxId int64
+	err := s.db.QueryRow(stmt).Scan(&minId, &maxId)
+	if err != nil {
+		return -1, -1, err
+	}
+	return minId, maxId, nil
+}
+
+func (s *TiDBStore) DB() *sql.DB {
+	return s.db
+}
