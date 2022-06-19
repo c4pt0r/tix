@@ -12,8 +12,6 @@ type Config struct {
 	MaxBatchSize int `toml:"max_batch_size" env:"MAX_BATCH_SIZE" env-default:"1000"`
 	// PollIntervalInMs is the interval to poll the database.
 	PollIntervalInMs int `toml:"poll_interval_in_ms" env:"POLL_INTERVAL_IN_MS" env-default:"100"`
-	// GCIntervalInSec is the interval to run garbage collection.
-	GCIntervalInSec int `toml:"gc_interval_in_sec" env:"GC_INTERVAL_IN_SEC" env-default:"600"`
 	// TablePrefix
 	TablePrefix string `toml:"table_prefix" env:"TABLE_PREFIX" env-default:"tix_jobqueue"`
 }

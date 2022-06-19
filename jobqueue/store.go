@@ -5,14 +5,17 @@ import (
 	"sync"
 )
 
+// Store is the interface that wraps the basic methods to store jobqueue data.
 type Store interface {
+	// OpenJobChannel opens a job channel.
 	OpenJobChannel(channelName string) (*JobChannel, error)
 }
 
+// TiDBStore is the implementation of Store interface.
 type TiDBStore struct {
 	db  *sql.DB
 	cfg *Config
-
+	// mu protect mapJobChannel
 	mu            sync.RWMutex
 	mapJobChannel map[string]*JobChannel
 }

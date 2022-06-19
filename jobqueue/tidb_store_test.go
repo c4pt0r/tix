@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/c4pt0r/log"
 	"github.com/c4pt0r/tix"
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -16,32 +15,31 @@ func TestCreateChannelTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	jc, err := s.OpenJobChannel("test")
+	ch, err := s.OpenJobChannel("jobqueue_test")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = jc.SubmitJob(&Job{
-		Name:       tix.RandomString("job-", 10),
-		Type:       "test",
-		Data:       []byte("test_data"),
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-		ScheduleAt: time.Now(),
-	})
+	for i := 0; i < 10; i++ {
+		err = ch.SubmitJob(&Job{
+			Name:     tix.RandomString("job-", 10),
+			Type:     "test",
+			AssignTo: "worker-1",
+			Data:     []byte("test_data"),
+		})
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
+	time.Sleep(time.Second)
+
+	jobs, err := ch.FetchJobs("worker-1", NewGetOpt().SetLimit(10))
 	if err != nil {
 		t.Error(err)
 	}
 
-	jobs, err := jc.FetchJobs("worker-1", DefaultGetOpt().
-		SetLimit(1).
-		SetAssign(true))
-
-	if err != nil {
-		t.Error(err)
-	}
-
-	for _, job := range jobs {
-		log.I(job)
+	if len(jobs) != 10 {
+		t.Errorf("expected 10 jobs, got %d", len(jobs))
 	}
 }

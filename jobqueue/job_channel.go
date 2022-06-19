@@ -3,6 +3,7 @@ package jobqueue
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -71,6 +72,15 @@ func (jc *JobChannel) createChannelTable() error {
 }
 
 func (jc *JobChannel) SubmitJob(job *Job) error {
+	if job.CreatedAt.IsZero() {
+		job.CreatedAt = time.Now()
+	}
+	if job.UpdatedAt.IsZero() {
+		job.UpdatedAt = time.Now()
+	}
+	if job.ScheduleAt.IsZero() {
+		job.ScheduleAt = time.Now()
+	}
 	stmt := fmt.Sprintf(`
 		INSERT INTO %s
 			(name, data, status, type, assign_to, schedule_at, created_at, updated_at)
@@ -105,31 +115,47 @@ func (jc *JobChannel) FetchJobs(workerID string, opt *GetOpt) ([]*Job, error) {
 	}
 	defer txn.Rollback()
 
-	var predicateForMaxScheduleAt string
-	if !jc.maxDispatchedScheduleAt.Load().(time.Time).IsZero() {
-		predicateForMaxScheduleAt = "AND schedule_at >= ?"
+	predicates := []string{}
+	params := []any{}
+
+	predicates = append(predicates, "status = ?")
+	params = append(params, JobStatusPending)
+
+	predicates = append(predicates, "(assign_to = ? OR assign_to = '')")
+	params = append(params, workerID)
+
+	if opt.Tp != "" {
+		predicates = append(predicates, "type = ?")
+		params = append(params, opt.Tp)
 	}
+
+	predicates = append(predicates, "schedule_at <= ?")
+	params = append(params, time.Now())
+
+	if !jc.maxDispatchedScheduleAt.Load().(time.Time).IsZero() {
+		predicates = append(predicates, "schedule_at >= ?")
+		params = append(params, jc.maxDispatchedScheduleAt.Load().(time.Time))
+	}
+
+	predicatesClause := strings.Join(predicates, " AND ")
+	params = append(params, opt.Limit)
 
 	stmt := fmt.Sprintf(`
 		SELECT 
-			id, name, data, status, type, schedule_at, progress_data, result_code, result_data, error_message, created_at, updated_at
+			id, name, data, status, type, 
+			schedule_at, progress_data, result_code, result_data, error_message, created_at, updated_at
 		FROM %s
 		WHERE 
-			status = ? AND (assign_to = ? OR assign_to = '') AND (schedule_at <= ? %s)
+			%s
 		ORDER BY 
-			schedule_at 
-		ASC
+			schedule_at ASC
 		LIMIT ?
 		FOR UPDATE
-		`, jc.tblNameForJobs(), predicateForMaxScheduleAt)
+		`, jc.tblNameForJobs(), predicatesClause)
+	var rows *sql.Rows
 	log.D("FetchJobs", stmt)
 
-	var rows *sql.Rows
-	if len(predicateForMaxScheduleAt) > 0 {
-		rows, err = txn.Query(stmt, JobStatusPending, workerID, time.Now(), jc.maxDispatchedScheduleAt.Load().(time.Time), opt.Limit)
-	} else {
-		rows, err = txn.Query(stmt, JobStatusPending, workerID, time.Now(), opt.Limit)
-	}
+	rows, err = txn.Query(stmt, params...)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +193,6 @@ func (jc *JobChannel) FetchJobs(workerID string, opt *GetOpt) ([]*Job, error) {
 			WHERE 
 				id = ?
 			`, jc.tblNameForJobs())
-		log.D("FetchJobs", stmt)
 		_, err := txn.Exec(stmt, JobStatusDispatched, workerID, time.Now(), job.ID)
 		if err != nil {
 			return nil, err
@@ -180,7 +205,13 @@ func (jc *JobChannel) FetchJobs(workerID string, opt *GetOpt) ([]*Job, error) {
 	return jobs, nil
 }
 
-func (jc *JobChannel) UpdateJobForWorker(workerID string, job *Job) error {
+func (jc *JobChannel) UpdateJobsForWorker(workerID string, jobs []*Job) error {
+	txn, err := jc.store.DB().Begin()
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+
 	stmt := fmt.Sprintf(`
 		UPDATE %s
 		SET 
@@ -193,17 +224,25 @@ func (jc *JobChannel) UpdateJobForWorker(workerID string, job *Job) error {
 		WHERE 
 			id = ? AND worker_id = ?
 		`, jc.tblNameForJobs())
-	log.D("UpdateJob", stmt)
-	_, err := jc.store.DB().Exec(stmt,
-		job.Status,
-		job.ProgressData,
-		job.ResultCode,
-		job.ResultData,
-		job.ErrorMessage,
-		time.Now(),
-		job.ID, workerID)
+	s, err := txn.Prepare(stmt)
 	if err != nil {
 		return err
 	}
-	return nil
+
+	for _, j := range jobs {
+		log.D("UpdateJob", stmt)
+		_, err = s.Exec(
+			j.Status,
+			j.ProgressData,
+			j.ResultCode,
+			j.ResultData,
+			j.ErrorMessage,
+			time.Now(),
+			j.ID,
+			workerID)
+		if err != nil {
+			return err
+		}
+	}
+	return txn.Commit()
 }

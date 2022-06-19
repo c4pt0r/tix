@@ -69,9 +69,9 @@ func (Job) CreateTableSQL(tableName string) string {
 			result_code INT DEFAULT NULL,
 			result_data LONGBLOB DEFAULT NULL,
 			error_message LONGTEXT DEFAULT NULL,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			schedule_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			schedule_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			UNIQUE (name),
 			KEY(owner),
 			KEY(schedule_at),
@@ -83,21 +83,17 @@ func (Job) CreateTableSQL(tableName string) string {
 
 func NewJob(name, tp, content string) *Job {
 	return &Job{
-		Name:      name,
-		Data:      []byte(content),
-		Status:    JobStatusPending,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Name:   name,
+		Data:   []byte(content),
+		Status: JobStatusPending,
 	}
 }
 
 func NewJobWithID(id int64, tp, name, content string) *Job {
 	return &Job{
-		ID:        id,
-		Name:      name,
-		Data:      []byte(content),
-		Status:    JobStatusPending,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:     id,
+		Name:   name,
+		Data:   []byte(content),
+		Status: JobStatusPending,
 	}
 }

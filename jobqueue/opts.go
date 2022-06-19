@@ -7,7 +7,7 @@ type GetOpt struct {
 	Status JobStatus
 }
 
-func DefaultGetOpt() *GetOpt {
+func NewGetOpt() *GetOpt {
 	return &GetOpt{
 		Limit:  1,
 		Tp:     "",
