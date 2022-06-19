@@ -1,6 +1,7 @@
 package jobqueue
 
 import (
+	"database/sql"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -24,13 +25,13 @@ func OpenJobChannel(s *TiDBStore, channelName string) (*JobChannel, error) {
 		return nil, err
 	}
 
+	jc.maxDispatchedScheduleAt.Store(time.Time{})
+
 	go func() {
 		for {
 			maxScheduleAt, err := jc.getMaxScheduleAt()
 			if err != nil {
 				log.E("getMaxScheduleAt", err)
-				time.Sleep(time.Second)
-				continue
 			}
 			jc.maxDispatchedScheduleAt.Store(maxScheduleAt)
 			time.Sleep(time.Second * 5)
@@ -50,7 +51,7 @@ func (jc *JobChannel) getMaxScheduleAt() (time.Time, error) {
 	var maxScheduleAt time.Time
 	err := jc.store.DB().QueryRow(stmt, JobStatusPending).Scan(&maxScheduleAt)
 	if err != nil {
-		return maxScheduleAt, err
+		return time.Time{}, err
 	}
 	return maxScheduleAt, nil
 }
@@ -104,20 +105,31 @@ func (jc *JobChannel) FetchJobs(workerID string, opt *GetOpt) ([]*Job, error) {
 	}
 	defer txn.Rollback()
 
+	var predicateForMaxScheduleAt string
+	if !jc.maxDispatchedScheduleAt.Load().(time.Time).IsZero() {
+		predicateForMaxScheduleAt = "AND schedule_at >= ?"
+	}
+
 	stmt := fmt.Sprintf(`
 		SELECT 
 			id, name, data, status, type, schedule_at, progress_data, result_code, result_data, error_message, created_at, updated_at
 		FROM %s
 		WHERE 
-			status = ? AND (assign_to = ? OR assign_to = '') AND (schedule_at <= ? AND schedule_at >= ?)
+			status = ? AND (assign_to = ? OR assign_to = '') AND (schedule_at <= ? %s)
 		ORDER BY 
 			schedule_at 
 		ASC
-		LIMIT 1
+		LIMIT ?
 		FOR UPDATE
-		`, jc.tblNameForJobs())
+		`, jc.tblNameForJobs(), predicateForMaxScheduleAt)
 	log.D("FetchJobs", stmt)
-	rows, err := txn.Query(stmt, JobStatusPending, workerID, time.Now(), jc.maxDispatchedScheduleAt, opt.Limit)
+
+	var rows *sql.Rows
+	if len(predicateForMaxScheduleAt) > 0 {
+		rows, err = txn.Query(stmt, JobStatusPending, workerID, time.Now(), jc.maxDispatchedScheduleAt.Load().(time.Time), opt.Limit)
+	} else {
+		rows, err = txn.Query(stmt, JobStatusPending, workerID, time.Now(), opt.Limit)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -150,18 +162,17 @@ func (jc *JobChannel) FetchJobs(workerID string, opt *GetOpt) ([]*Job, error) {
 			UPDATE %s
 			SET 
 				status = ?,
-				worker_id = ?,
+				owner = ?,
 				updated_at = ?
 			WHERE 
 				id = ?
 			`, jc.tblNameForJobs())
 		log.D("FetchJobs", stmt)
-		_, err := txn.Exec(stmt, JobStatusRunning, workerID, time.Now(), job.ID)
+		_, err := txn.Exec(stmt, JobStatusDispatched, workerID, time.Now(), job.ID)
 		if err != nil {
 			return nil, err
 		}
 	}
-
 	err = txn.Commit()
 	if err != nil {
 		return nil, err

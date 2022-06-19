@@ -1,36 +1,47 @@
 package jobqueue
 
 import (
-	"database/sql"
+	"math/rand"
 	"testing"
 	"time"
 
+	"github.com/c4pt0r/log"
 	"github.com/c4pt0r/tix"
 	_ "github.com/go-sql-driver/mysql"
 )
 
 func TestCreateChannelTable(t *testing.T) {
-	db, err := sql.Open("mysql", "root:@tcp(localhost:4000)/test")
+	rand.Seed(time.Now().UnixNano())
+	s, err := OpenStore(tix.DefaultConfig[Config]())
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-	defer db.Close()
-
-	s := OpenStoreWithDB(db, tix.DefaultConfig[Config]())
 	jc, err := s.OpenJobChannel("test")
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	err = jc.SubmitJob(&Job{
-		Name:       "test",
+		Name:       tix.RandomString("job-", 10),
 		Type:       "test",
-		Data:       "test_data",
+		Data:       []byte("test_data"),
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 		ScheduleAt: time.Now(),
 	})
 	if err != nil {
 		t.Error(err)
+	}
+
+	jobs, err := jc.FetchJobs("worker-1", DefaultGetOpt().
+		SetLimit(1).
+		SetAssign(true))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	for _, job := range jobs {
+		log.I(job)
 	}
 }

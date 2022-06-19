@@ -9,7 +9,6 @@ import (
 
 func TestSomething(t *testing.T) {
 	assert := assert.New(t)
-
 	for i := 0; i < 10; i++ {
 		job := NewJob("demo", "type-default", "content")
 		log.I(job)

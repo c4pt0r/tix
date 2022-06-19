@@ -7,7 +7,7 @@ import (
 // Config is the configuration for the job queue.
 type Config struct {
 	// DSN is the data source name.
-	DSN string `toml:"dsn" env:"DSN" env-default:"root:@tcp(localhost:4000)/test?charset=utf8&parseTime=True"`
+	DSN string `toml:"dsn" env:"DSN" env-default:"root:@tcp(localhost:4000)/test?charset=utf8&parseTime=True&loc=Local"`
 	// MaxBatchSize is the maximum number of messages to batch a transaction.
 	MaxBatchSize int `toml:"max_batch_size" env:"MAX_BATCH_SIZE" env-default:"1000"`
 	// PollIntervalInMs is the interval to poll the database.
