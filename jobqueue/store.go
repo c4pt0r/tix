@@ -59,7 +59,6 @@ func (s *TiDBStore) OpenJobChannel(channelName string) (*JobChannel, error) {
 	if _, ok := s.mapJobChannel[channelName]; ok {
 		return s.mapJobChannel[channelName], nil
 	}
-
 	jc, err := OpenJobChannel(s, channelName)
 	if err != nil {
 		return nil, err

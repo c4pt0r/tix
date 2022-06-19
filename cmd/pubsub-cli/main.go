@@ -19,7 +19,7 @@ import (
 
 var (
 	hub               *pubsub.PubSub
-	dsn               = flag.String("dsn", "root:@tcp(localhost:4000)/test", "TiDB DSN")
+	dsn               = flag.String("dsn", "root:@tcp(localhost:4000)/test?parseTime=True&loc=Local", "TiDB DSN")
 	logLevel          = flag.String("l", "error", "log level")
 	PrintSampleConfig = flag.Bool("sample-config", false, "print sample config")
 )

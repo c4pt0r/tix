@@ -46,10 +46,10 @@ type Job struct {
 	Type         string    `json:"type"`
 	AssignTo     string    `json:"assign_to"` // if assign_to is empty, it means the job will be assigned randomely
 	Owner        string    `json:"owner_id"`
-	ProgressData *string   `json:"progress_data"`
+	ProgressData []byte    `json:"progress_data"`
 	ResultCode   *int      `json:"result_code"`
 	ResultData   []byte    `json:"result_data"`
-	ErrorMessage *string   `json:"error_message"`
+	ErrorMessage []byte    `json:"error_message"`
 	CreatedAt    time.Time `json:"created_at"`
 	ScheduleAt   time.Time `json:"schedule_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -65,10 +65,10 @@ func (Job) CreateTableSQL(tableName string) string {
 			type VARCHAR(255) DEFAULT NULL,
 			owner VARCHAR(255) NOT NULL DEFAULT '',
 			assign_to VARCHAR(255) NOT NULL DEFAULT '',
-			progress_data TEXT DEFAULT NULL,
+			progress_data LONGBLOB DEFAULT NULL,
 			result_code INT DEFAULT NULL,
 			result_data LONGBLOB DEFAULT NULL,
-			error_message LONGTEXT DEFAULT NULL,
+			error_message LONGBLOB DEFAULT NULL,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			schedule_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

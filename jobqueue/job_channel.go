@@ -197,6 +197,7 @@ func (jc *JobChannel) FetchJobs(workerID string, opt *GetOpt) ([]*Job, error) {
 		if err != nil {
 			return nil, err
 		}
+		job.Status = JobStatusDispatched
 	}
 	err = txn.Commit()
 	if err != nil {
@@ -222,7 +223,7 @@ func (jc *JobChannel) UpdateJobsForWorker(workerID string, jobs []*Job) error {
 			error_message = ?,
 			updated_at = ?
 		WHERE 
-			id = ? AND worker_id = ?
+			id = ? AND owner = ?
 		`, jc.tblNameForJobs())
 	s, err := txn.Prepare(stmt)
 	if err != nil {
@@ -230,6 +231,10 @@ func (jc *JobChannel) UpdateJobsForWorker(workerID string, jobs []*Job) error {
 	}
 
 	for _, j := range jobs {
+		if j.Status == JobStatusPending {
+			log.Warn("job is not dispatched yet", "job", j)
+			continue
+		}
 		log.D("UpdateJob", stmt)
 		_, err = s.Exec(
 			j.Status,
@@ -245,4 +250,19 @@ func (jc *JobChannel) UpdateJobsForWorker(workerID string, jobs []*Job) error {
 		}
 	}
 	return txn.Commit()
+}
+
+func (jc *JobChannel) GCUnitlDate(until time.Time, limit int) error {
+	stmt := fmt.Sprintf(`
+		DELETE FROM %s
+		WHERE
+			created_at <= ?
+		LIMIT ?`, jc.tblNameForJobs())
+	log.D("GCUnitlDate", stmt)
+
+	_, err := jc.store.DB().Exec(stmt, until, limit)
+	if err != nil {
+		return err
+	}
+	return nil
 }
