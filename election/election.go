@@ -18,8 +18,7 @@ type Campaign struct {
 	cfg *Config
 	s   Store
 
-	eventChan chan Event
-
+	eventChan         chan Event
 	campaignName      string
 	candidateName     string
 	currentLeaderName string
@@ -66,7 +65,6 @@ func (c *Campaign) Init() error {
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -87,11 +85,32 @@ func (c *Campaign) Elect() (<-chan Event, error) {
 		}
 		time.Sleep(time.Duration(c.cfg.PollIntervalInSec) * time.Second)
 	}
-	return nil, nil
 }
 
 func (c *Campaign) Resign(ctx context.Context) error {
-	return ErrNotElected
+	stmt := fmt.Sprintf(`
+		UPDATE %s SET
+			leader = '',
+			lease = NOW()
+		WHERE
+			name = ?
+		AND
+			leader = ?
+		AND
+			term = ?
+	`, c.cfg.TermTable)
+	ret, err := c.s.DB().ExecContext(ctx, stmt, c.campaignName, c.candidateName, c.leaderTerm)
+	if err != nil {
+		return err
+	}
+	rows, err := ret.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotElected
+	}
+	return nil
 }
 
 func (c *Campaign) tryToUpdateLease() error {
@@ -100,7 +119,7 @@ func (c *Campaign) tryToUpdateLease() error {
 	}
 
 	stmt := fmt.Sprintf(`
-		UPDATE %s SET 
+		UPDATE %s SET
 			lease= NOW() + INTERVAL ? SECOND
 		WHERE
 			name=? AND leader=? AND term=?
@@ -178,12 +197,10 @@ func (c *Campaign) tryToBeLeader() error {
 	if err != nil {
 		return err
 	}
-
 	err = txn.Commit()
 	if err != nil {
 		return err
 	}
-
 	c.leaderTerm = term
 	c.currentLeaderName = c.candidateName
 	return nil
