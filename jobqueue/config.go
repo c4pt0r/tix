@@ -2,6 +2,8 @@ package jobqueue
 
 import (
 	"fmt"
+
+	"github.com/c4pt0r/tix"
 )
 
 // Config is the configuration for the job queue.
@@ -18,4 +20,10 @@ type Config struct {
 
 func (c *Config) String() string {
 	return fmt.Sprintf("%+v", *c)
+}
+
+var _ tix.IConfig = (*Config)(nil)
+
+func (c *Config) Name() string {
+	return "jobqueue"
 }

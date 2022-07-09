@@ -7,8 +7,12 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
+type IConfig interface {
+	Name() string
+}
+
 // DefaultConfig returns default config.
-func DefaultConfig[ConfigT any]() *ConfigT {
+func DefaultConfig[ConfigT IConfig]() *ConfigT {
 	var cfg ConfigT
 	// read configuration from the file and environment variables
 	// or use default values if not set
@@ -17,7 +21,7 @@ func DefaultConfig[ConfigT any]() *ConfigT {
 }
 
 // LoadConfig loads config from file.
-func LoadConfig[ConfigT any](path string) (*ConfigT, error) {
+func LoadConfig[ConfigT IConfig](path string) (*ConfigT, error) {
 	var cfg ConfigT
 	// read configuration from the file and environment variables
 	if err := cleanenv.ReadConfig(path, &cfg); err != nil {
@@ -32,7 +36,7 @@ func LoadConfig[ConfigT any](path string) (*ConfigT, error) {
 }
 
 // LoadConfigFromEnv loads config from environment variables.
-func MustLoadConfig[ConfigT any](path string) *ConfigT {
+func MustLoadConfig[ConfigT IConfig](path string) *ConfigT {
 	cfg, err := LoadConfig[ConfigT](path)
 	if err != nil {
 		panic(err)
@@ -41,7 +45,7 @@ func MustLoadConfig[ConfigT any](path string) *ConfigT {
 }
 
 // PrintSampleConfig prints sample config to stdout.
-func PrintSampleConfig[ConfigT any]() {
+func PrintSampleConfig[ConfigT IConfig]() {
 	cfg := DefaultConfig[ConfigT]()
 	toml.NewEncoder(os.Stdout).Encode(cfg)
 }

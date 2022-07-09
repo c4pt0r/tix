@@ -14,7 +14,11 @@
 
 package pubsub
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/c4pt0r/tix"
+)
 
 type Config struct {
 	// DSN is the data source name.
@@ -31,6 +35,12 @@ type Config struct {
 	EnableGC bool `toml:"enable_gc" env:"ENABLE_GC" env-default:"false"`
 	// TablePrefix is the prefix of the table name.
 	TablePrefix string `toml:"table_prefix" env:"TABLE_PREFIX" env-default:"tix_pubsub"`
+}
+
+var _ tix.IConfig = (*Config)(nil)
+
+func (c *Config) Name() string {
+	return "pubsub"
 }
 
 func (c *Config) getStreamTblName(streamName string) string {
