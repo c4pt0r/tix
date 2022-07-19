@@ -9,6 +9,7 @@ import (
 )
 
 type (
+	// Config is the configuration for the application. Common configurations
 	Config struct {
 		DSN        string `toml:"dsn" default:"root:@tcp(localhost:4000)/test?charset=utf8&parseTime=True&loc=Local"`
 		MaxTxnSize int    `toml:"max_transaction_size" default:"1000"`
@@ -40,14 +41,6 @@ type (
 		TermTimeout  string `toml:"term_timeout" default:"1m"`
 	}
 )
-
-func (pubsubConfig PubSubConfig) StreamTblName(streamName string) string {
-	return pubsubConfig.TablePrefix + "_" + streamName
-}
-
-func (pubsubConfig PubSubConfig) MetaTblName() string {
-	return pubsubConfig.TablePrefix
-}
 
 func NewDefaultConfig() *Config {
 	var config Config
@@ -82,4 +75,13 @@ func ParseConfigFromContent(content string) (*Config, error) {
 		return nil, err
 	}
 	return config, nil
+}
+
+// Helper functions for specic config
+func (pubsubConfig PubSubConfig) StreamTblName(streamName string) string {
+	return pubsubConfig.TablePrefix + "_" + streamName
+}
+
+func (pubsubConfig PubSubConfig) MetaTblName() string {
+	return pubsubConfig.TablePrefix
 }

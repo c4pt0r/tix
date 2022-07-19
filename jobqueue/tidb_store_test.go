@@ -12,7 +12,7 @@ import (
 
 func TestCreateChannelTable(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
-	s, err := OpenStore(tix.DefaultConfig[Config]())
+	s, err := OpenStore(tix.NewDefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestCreateChannelTable(t *testing.T) {
 
 func TestUpdateJob(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
-	s, err := OpenStore(tix.DefaultConfig[Config]())
+	s, err := OpenStore(tix.NewDefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
