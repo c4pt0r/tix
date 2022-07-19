@@ -20,16 +20,19 @@ import (
 	"time"
 
 	"github.com/c4pt0r/log"
+	"github.com/c4pt0r/tix"
+	str2duration "github.com/xhit/go-str2duration/v2"
 )
 
 // PollWorker is a worker that polls messages from a stream
 type PollWorker struct {
-	cfg            *Config
+	cfg            *tix.Config
 	streamName     string
 	lastSeenOffset Offset
 	store          Store
 	stopped        atomic.Value
 	numSubscribers int32
+	pollInterval   time.Duration
 
 	// make sure subscribers is threadsafe here
 	mu sync.Mutex
@@ -37,7 +40,7 @@ type PollWorker struct {
 	subscribers map[string]chan Message
 }
 
-func newPollWorker(cfg *Config, s Store, streamName string) (*PollWorker, error) {
+func newPollWorker(cfg *tix.Config, s Store, streamName string) (*PollWorker, error) {
 	// create stream table
 	err := s.CreateStream(streamName)
 	if err != nil {
@@ -53,6 +56,11 @@ func newPollWorker(cfg *Config, s Store, streamName string) (*PollWorker, error)
 	stopped := atomic.Value{}
 	stopped.Store(false)
 
+	pollInterval, err := str2duration.ParseDuration(cfg.PubSubConfig.PollInterval)
+	if err != nil {
+		return nil, err
+	}
+
 	pw := &PollWorker{
 		streamName:     streamName,
 		cfg:            cfg,
@@ -62,7 +70,9 @@ func newPollWorker(cfg *Config, s Store, streamName string) (*PollWorker, error)
 		numSubscribers: 0,
 		mu:             sync.Mutex{},
 		subscribers:    map[string]chan Message{},
+		pollInterval:   pollInterval,
 	}
+
 	go pw.run()
 	return pw, nil
 }
@@ -102,8 +112,8 @@ func (pw *PollWorker) addNewSubscriber(subscriberID string) (<-chan Message, err
 func (pw *PollWorker) Stat() map[string]interface{} {
 	return map[string]interface{}{
 		"last_poll_id":        pw.lastSeenOffset,
-		"poll_interval_in_ms": pw.cfg.PollIntervalInMs,
-		"poll_batch_size":     pw.cfg.MaxBatchSize,
+		"poll_interval_in_ms": pw.cfg.PubSubConfig.PollInterval,
+		"poll_batch_size":     pw.cfg.MaxTxnSize,
 	}
 }
 
@@ -127,10 +137,10 @@ func (pw *PollWorker) run() {
 	log.Info("sub: start polling from", pw.streamName, "@id=", pw.lastSeenOffset)
 	for !pw.stopped.Load().(bool) {
 		// get messages from the stream in batches
-		msgs, max, err := pw.store.FetchMessages(pw.streamName, pw.lastSeenOffset, pw.cfg.MaxBatchSize)
+		msgs, max, err := pw.store.FetchMessages(pw.streamName, pw.lastSeenOffset, pw.cfg.MaxTxnSize)
 		if err != nil {
 			log.Error(err)
-			time.Sleep(time.Duration(pw.cfg.PollIntervalInMs) * time.Millisecond)
+			time.Sleep(pw.pollInterval)
 			goto done
 		}
 		if len(msgs) > 0 {
@@ -149,7 +159,7 @@ func (pw *PollWorker) run() {
 			pw.mu.Unlock()
 		}
 	done:
-		time.Sleep(time.Duration(pw.cfg.PollIntervalInMs) * time.Millisecond)
+		time.Sleep(pw.pollInterval)
 	}
 	log.D("poll worker stopped")
 }

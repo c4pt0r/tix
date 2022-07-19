@@ -19,14 +19,15 @@ import (
 	"fmt"
 
 	"github.com/c4pt0r/log"
+	"github.com/c4pt0r/tix"
 )
 
 type gcWorker struct {
 	db  *sql.DB
-	cfg *Config
+	cfg *tix.Config
 }
 
-func newGCWorker(db *sql.DB, config *Config) *gcWorker {
+func newGCWorker(db *sql.DB, config *tix.Config) *gcWorker {
 	return &gcWorker{
 		db:  db,
 		cfg: config,
@@ -34,7 +35,7 @@ func newGCWorker(db *sql.DB, config *Config) *gcWorker {
 }
 
 // getSafeOffsetID returns the offsetID of the last message in the stream
-func (gc *gcWorker) getSafeOffsetID(streamName string) (int64, error) {
+func (gc *gcWorker) getSafeOffsetID(tableName string) (int64, error) {
 	stmt := fmt.Sprintf(`
 			SELECT MIN(t.id) 
 			FROM (
@@ -46,7 +47,7 @@ func (gc *gcWorker) getSafeOffsetID(streamName string) (int64, error) {
 					id
 				DESC LIMIT %d
 			) as t
-		`, gc.cfg.getStreamTblName(streamName), gc.cfg.GCKeepItems)
+		`, tableName, gc.cfg.PubSubConfig.GCKeepItems)
 
 	var safeOffsetID int64
 	err := gc.db.QueryRow(stmt).Scan(&safeOffsetID)
@@ -57,14 +58,14 @@ func (gc *gcWorker) getSafeOffsetID(streamName string) (int64, error) {
 }
 
 // deleteUntil deletes all messages in the stream before the given offsetID
-func (gc *gcWorker) deleteUntil(streamName string, offsetID int64) error {
+func (gc *gcWorker) deleteUntil(tableName string, offsetID int64) error {
 	stmt := fmt.Sprintf(`
 		DELETE FROM
 			%s
 		WHERE
 			id < ?
 		LIMIT %d
-	`, gc.cfg.getStreamTblName(streamName), gc.cfg.MaxBatchSize) // TODO: batch size
+	`, tableName, gc.cfg.MaxTxnSize) // TODO: batch size
 	for {
 		res, err := gc.db.Exec(stmt, offsetID)
 		if err != nil {
@@ -80,10 +81,10 @@ func (gc *gcWorker) deleteUntil(streamName string, offsetID int64) error {
 }
 
 // safeGC deletes all messages in the stream before the last SAFE_AMOUNT messages
-func (gc *gcWorker) safeGC(streamName string) error {
-	safePoint, err := gc.getSafeOffsetID(streamName)
+func (gc *gcWorker) safeGC(tableName string) error {
+	safePoint, err := gc.getSafeOffsetID(tableName)
 	if err != nil {
 		return err
 	}
-	return gc.deleteUntil(streamName, safePoint)
+	return gc.deleteUntil(tableName, safePoint)
 }

@@ -20,7 +20,10 @@ import (
 	"sync"
 	"time"
 
+	str2duration "github.com/xhit/go-str2duration/v2"
+
 	"github.com/c4pt0r/log"
+	"github.com/c4pt0r/tix"
 )
 
 var (
@@ -33,12 +36,13 @@ type PubSub struct {
 	store       Store
 	// streamName -> Stream
 	streams map[string]*Stream
-	cfg     *Config
+	cfg     *tix.Config
 
-	gcWorker *gcWorker
+	gcWorker   *gcWorker
+	gcInterval time.Duration
 }
 
-func NewPubSub(c *Config) (*PubSub, error) {
+func NewPubSub(c *tix.Config) (*PubSub, error) {
 	store, err := OpenStore(c)
 	if err != nil {
 		return nil, err
@@ -46,7 +50,7 @@ func NewPubSub(c *Config) (*PubSub, error) {
 	return newPubSubWithStore(store, c), nil
 }
 
-func NewPubSubWithDB(db *sql.DB, c *Config) (*PubSub, error) {
+func NewPubSubWithDB(db *sql.DB, c *tix.Config) (*PubSub, error) {
 	store, err := OpenStoreWithDB(db, c)
 	if err != nil {
 		return nil, err
@@ -54,7 +58,8 @@ func NewPubSubWithDB(db *sql.DB, c *Config) (*PubSub, error) {
 	return newPubSubWithStore(store, c), nil
 }
 
-func newPubSubWithStore(store Store, c *Config) *PubSub {
+func newPubSubWithStore(store Store, c *tix.Config) *PubSub {
+
 	h := &PubSub{
 		mu:          sync.RWMutex{},
 		cfg:         c,
@@ -63,7 +68,12 @@ func newPubSubWithStore(store Store, c *Config) *PubSub {
 		streams:     map[string]*Stream{},
 		gcWorker:    newGCWorker(store.DB(), c),
 	}
-	if c.EnableGC {
+	if c.PubSubConfig.EnableGC {
+		gcInterval, err := str2duration.ParseDuration(c.PubSubConfig.GCInterval)
+		if err != nil {
+			log.Fatal(err)
+		}
+		h.gcInterval = gcInterval
 		go h.gc()
 	}
 	return h
@@ -71,12 +81,11 @@ func newPubSubWithStore(store Store, c *Config) *PubSub {
 
 func (m *PubSub) gc() {
 	for {
-		time.Sleep(time.Duration(m.cfg.GCIntervalInSec) * time.Second)
+		time.Sleep(m.gcInterval)
 		m.mu.RLock()
 		// TODO: Should use all stream names(global), not just the ones in the map.
 		for streamName := range m.streams {
-			log.I("start GC", streamName)
-			m.gcWorker.safeGC(streamName)
+			m.gcWorker.safeGC(m.cfg.PubSubConfig.StreamTblName(streamName))
 		}
 		m.mu.RUnlock()
 	}
@@ -125,7 +134,7 @@ func (m *PubSub) MessagesSinceOffset(streamName string, offset Offset) ([]Messag
 	var ret []Message
 	for {
 		log.I("start MessagesSinceOffset", streamName, offset)
-		msgs, newOffsetInt, err := m.store.FetchMessages(streamName, offset, m.cfg.MaxBatchSize)
+		msgs, newOffsetInt, err := m.store.FetchMessages(streamName, offset, m.cfg.MaxTxnSize)
 		if err != nil {
 			return nil, err
 		}

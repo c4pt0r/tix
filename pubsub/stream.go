@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/c4pt0r/log"
+	"github.com/c4pt0r/tix"
 )
 
 type Message struct {
@@ -48,12 +49,12 @@ func (s *Stream) Name() string {
 	return s.name
 }
 
-func NewStream(cfg *Config, s Store, name string) (*Stream, error) {
+func NewStream(cfg *tix.Config, s Store, name string) (*Stream, error) {
 	return &Stream{
 		store:        s,
 		name:         name,
-		mq:           make(chan *Message, cfg.MaxBatchSize),
-		maxBatchSize: cfg.MaxBatchSize,
+		mq:           make(chan *Message, cfg.MaxTxnSize),
+		maxBatchSize: cfg.MaxTxnSize,
 	}, nil
 }
 

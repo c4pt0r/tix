@@ -95,12 +95,12 @@ L:
 func main() {
 	flag.Parse()
 	if *PrintSampleConfig {
-		tix.PrintSampleConfig[pubsub.Config]()
+		tix.SampleConfig()
 		return
 	}
 	log.SetLevelByString(*logLevel)
 
-	cfg := tix.DefaultConfig[pubsub.Config]()
+	cfg := tix.NewDefaultConfig()
 	cfg.DSN = *dsn
 
 	var err error

@@ -3,6 +3,8 @@ package jobqueue
 import (
 	"database/sql"
 	"sync"
+
+	"github.com/c4pt0r/tix"
 )
 
 // Store is the interface that wraps the basic methods to store jobqueue data.
@@ -14,13 +16,13 @@ type Store interface {
 // TiDBStore is the implementation of Store interface.
 type TiDBStore struct {
 	db  *sql.DB
-	cfg *Config
+	cfg *tix.Config
 	// mu protect mapJobChannel
 	mu            sync.RWMutex
 	mapJobChannel map[string]*JobChannel
 }
 
-func OpenStore(cfg *Config) (Store, error) {
+func OpenStore(cfg *tix.Config) (Store, error) {
 	db, err := sql.Open("mysql", cfg.DSN)
 	if err != nil {
 		return nil, err
@@ -32,7 +34,7 @@ func OpenStore(cfg *Config) (Store, error) {
 	}, nil
 }
 
-func OpenStoreWithDB(db *sql.DB, cfg *Config) Store {
+func OpenStoreWithDB(db *sql.DB, cfg *tix.Config) Store {
 	return &TiDBStore{
 		db:            db,
 		cfg:           cfg,
@@ -49,7 +51,7 @@ func (s *TiDBStore) DB() *sql.DB {
 }
 
 func (s *TiDBStore) GetTablePrefix() string {
-	return s.cfg.TablePrefix
+	return s.cfg.JobQueueConfig.TablePrefix
 }
 
 func (s *TiDBStore) OpenJobChannel(channelName string) (*JobChannel, error) {

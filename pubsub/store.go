@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/c4pt0r/tix"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -40,7 +41,7 @@ type Store interface {
 	DB() *sql.DB
 }
 
-func OpenStore(cfg *Config) (Store, error) {
+func OpenStore(cfg *tix.Config) (Store, error) {
 	s := &TiDBStore{
 		cfg: cfg,
 	}
@@ -50,7 +51,7 @@ func OpenStore(cfg *Config) (Store, error) {
 	return s, nil
 }
 
-func OpenStoreWithDB(db *sql.DB, cfg *Config) (Store, error) {
+func OpenStoreWithDB(db *sql.DB, cfg *tix.Config) (Store, error) {
 	s := &TiDBStore{
 		db:  db,
 		cfg: cfg,
@@ -62,13 +63,13 @@ func OpenStoreWithDB(db *sql.DB, cfg *Config) (Store, error) {
 }
 
 type TiDBStore struct {
-	cfg *Config
+	cfg *tix.Config
 	db  *sql.DB
 }
 
 func (s *TiDBStore) GetStreamNames() ([]string, error) {
 	var names []string
-	rows, err := s.db.Query(fmt.Sprintf("SELECT stream_name FROM %s"), s.cfg.getMetaTblName())
+	rows, err := s.db.Query(fmt.Sprintf("SELECT stream_name FROM %s", s.cfg.PubSubConfig.TablePrefix))
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +96,7 @@ func (s *TiDBStore) CreateStream(streamName string) error {
 			data TEXT,
 			PRIMARY KEY (id),
 			KEY(ts)
-		);`, s.cfg.getStreamTblName(streamName))
+		);`, s.cfg.PubSubConfig.StreamTblName(streamName))
 	_, err := s.db.Exec(stmt)
 	if err != nil {
 		return err
@@ -103,7 +104,7 @@ func (s *TiDBStore) CreateStream(streamName string) error {
 	// insert the stream name into the meta table
 	stmt = fmt.Sprintf(`
 		REPLACE INTO %s (stream_name)
-		VALUES ('%s');`, s.cfg.getMetaTblName(), streamName)
+		VALUES ('%s');`, s.cfg.PubSubConfig.MetaTblName(), streamName)
 	_, err = s.db.Exec(stmt)
 	if err != nil {
 		return err
@@ -129,7 +130,7 @@ func (s *TiDBStore) Init() error {
 	stmt := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s (
 			stream_name VARCHAR(255) NOT NULL UNIQUE KEY
-		);`, s.cfg.getMetaTblName())
+		);`, s.cfg.PubSubConfig.MetaTblName())
 	_, err = s.db.Exec(stmt)
 	if err != nil {
 		return err
@@ -154,7 +155,7 @@ func (s *TiDBStore) PutMessages(streamName string, messages []*Message) error {
 		) VALUES (
 			?,
 			?
-		)`, s.cfg.getStreamTblName(streamName))
+		)`, s.cfg.PubSubConfig.StreamTblName(streamName))
 		res, err := txn.Exec(sql, msg.Ts, msg.Data)
 		if err != nil {
 			return err
@@ -187,7 +188,7 @@ func (s *TiDBStore) FetchMessages(streamName string, idOffset Offset, limit int)
 			data
 		FROM %s
 		WHERE id > ?
-		LIMIT %d`, s.cfg.getStreamTblName(streamName), limit)
+		LIMIT %d`, s.cfg.PubSubConfig.StreamTblName(streamName), limit)
 
 	rows, err := s.db.Query(stmt, idOffset)
 	if err != nil {
@@ -226,7 +227,7 @@ func (s *TiDBStore) MinMaxID(streamName string) (int64, int64, error) {
 		SELECT
 			IFNULL(MIN(id), 0),
 			IFNULL(MAX(id), 0)
-		FROM %s`, s.cfg.getStreamTblName(streamName))
+		FROM %s`, s.cfg.PubSubConfig.StreamTblName(streamName))
 	var minId, maxId int64
 	err := s.db.QueryRow(stmt).Scan(&minId, &maxId)
 	if err != nil {

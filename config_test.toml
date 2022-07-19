@@ -1,0 +1,6 @@
+dsn = "hello world"
+
+[job_queue]
+
+table_name = "tix_jobqueue_tbl"
+
