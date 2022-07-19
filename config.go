@@ -22,7 +22,7 @@ type (
 	JobQueueConfig struct {
 		TablePrefix  string `toml:"table_prefix" default:"tix_job_queue"`
 		PollInterval string `toml:"poll_interval" default:"1s"`
-		EnableGC     bool   `toml:"enable_gc" default:"true"`
+		EnableGC     bool   `toml:"enable_gc" default:"false"`
 		GCKeepItems  int    `toml:"gc_keep_items" default:"10000"`
 		GCInterval   string `toml:"gc_interval" default:"1m"`
 	}
@@ -30,7 +30,7 @@ type (
 	PubSubConfig struct {
 		TablePrefix  string `toml:"table_prefix" default:"tix_pubsub"`
 		PollInterval string `toml:"poll_interval" default:"1s"`
-		EnableGC     bool   `toml:"enable_gc" default:"true"`
+		EnableGC     bool   `toml:"enable_gc" default:"false"`
 		GCKeepItems  int    `toml:"gc_keep_items" default:"10000"`
 		GCInterval   string `toml:"gc_interval" default:"1m"`
 	}

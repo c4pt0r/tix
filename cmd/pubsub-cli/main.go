@@ -95,7 +95,7 @@ L:
 func main() {
 	flag.Parse()
 	if *PrintSampleConfig {
-		tix.SampleConfig()
+		fmt.Println(tix.SampleConfig())
 		return
 	}
 	log.SetLevelByString(*logLevel)

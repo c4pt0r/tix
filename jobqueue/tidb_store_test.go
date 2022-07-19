@@ -73,10 +73,12 @@ func TestUpdateJob(t *testing.T) {
 
 	jobs[0].ProgressData = []byte("progress_data")
 	log.I(jobs[0])
+	jobs[0].Status = JobStatusFinished
 
 	err = ch.UpdateJobsForWorker("worker-1", []*Job{
 		jobs[0],
 	})
+
 	if err != nil {
 		t.Fatal(err)
 	}
