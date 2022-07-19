@@ -6,18 +6,25 @@ Some scaffolds using TiDB
 # Config Template
 
 ```
-[common]
-dsn = mysql://service.tidb.endpoint.com
-txn_batch_size = 1000
+dsn = "root:@tcp(localhost:4000)/test?charset=utf8&parseTime=True&loc=Local"
+max_transaction_size = 1000
 
-
-[jobqueue]
-table_name = "tix_job_queue_tbl"
-
+[job_queue]
+  table_prefix = "tix_job_queue"
+  poll_interval = "1s"
+  enable_gc = true
+  gc_keep_items = 10000
+  gc_interval = "1m"
 
 [pubsub]
-table_name = "tix_pubsub_tbl"
+  table_prefix = "tix_pubsub"
+  poll_interval = "1s"
+  enable_gc = true
+  gc_keep_items = 10000
+  gc_interval = "1m"
 
-[alive]
-table_name = "tix_alive_tbl"
+[election]
+  table_name = "tix_election"
+  poll_interval = "1s"
+  term_timeout = "1m"
 ```
