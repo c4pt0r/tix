@@ -5,6 +5,8 @@ import (
 	"sync"
 
 	"github.com/c4pt0r/tix"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 // Store is the interface that wraps the basic methods to store jobqueue data.
