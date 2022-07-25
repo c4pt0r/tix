@@ -206,6 +206,38 @@ func (jc *JobChannel) FetchJobs(workerID string, opt *GetOpt) ([]*Job, error) {
 	return jobs, nil
 }
 
+func (jc *JobChannel) GetJobByID(id int64) (*Job, error) {
+	stmt := fmt.Sprintf(`
+		SELECT 
+			id, name, data, status, type, 
+			schedule_at, progress_data, result_code, result_data, 
+			error_message, created_at, updated_at
+		FROM %s
+		WHERE 
+			id = ?
+		`, jc.tblNameForJobs())
+	log.D("GetJob", stmt)
+	job := &Job{}
+	err := jc.store.DB().QueryRow(stmt, id).Scan(
+		&job.ID,
+		&job.Name,
+		&job.Data,
+		&job.Status,
+		&job.Type,
+		&job.ScheduleAt,
+		&job.ProgressData,
+		&job.ResultCode,
+		&job.ResultData,
+		&job.ErrorMessage,
+		&job.CreatedAt,
+		&job.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return job, nil
+}
+
 func (jc *JobChannel) UpdateJobsForWorker(workerID string, jobs []*Job) error {
 	txn, err := jc.store.DB().Begin()
 	if err != nil {
